@@ -36,25 +36,43 @@ int main() {
 
     printf("Listening on port %d...\n", SERVER_PORT);
 
-    // Now, we can accept connections one at the time
     struct sockaddr_in client_addr;
     socklen_t client_addn_size = sizeof(client_addr);
+    while (1) {
+        // Now, we can accept connections one at the time
+        int clientfd = accept(serverfd,
+                              (struct sockaddr*)&client_addr,
+                              &client_addn_size);
+        if (clientfd == -1) {
+            printf("Could not accept connection from %s:%d\n",
+                   inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+            break;
+        }
 
-    int clientfd = accept(serverfd,
-                          (struct sockaddr*)&client_addr,
-                          &client_addn_size);
-    if (clientfd == -1)
-        HANDLE_ERROR("Failed to accept connection from client");
+        char read_buff[4096];
+        int receive_status = recv(clientfd, &read_buff, sizeof(read_buff), 0);
 
-    printf("Connection accepted from %s:%d\n",
-           inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+        if (receive_status == -1) {
+            printf("Could not read from %s\n",
+                   inet_ntoa(client_addr.sin_addr));
+            continue;
+        }
 
-    // Response example
-    const char message[256] = "You successfuly reached the server socket";
-    send(clientfd, &message, sizeof(message), 0);
+        printf("%s", read_buff);
 
-    if (close(clientfd) == -1)
-        HANDLE_ERROR("Failed to close client socket");
+        const char response[] = "HTTP/1.1 200 OK\r\n"
+                                "Content-Type: text/html; charset=UTF-8\r\n\r\n"
+                                "yo";
+
+        send(clientfd, &response, sizeof(response), 0);
+
+        if (close(clientfd) == -1) {
+            printf("Could not close connection from %s\n",
+                   inet_ntoa(client_addr.sin_addr));
+            continue;
+        }
+    }
+
     if (close(serverfd) == -1)
         HANDLE_ERROR("Failed to close server socket");
 
