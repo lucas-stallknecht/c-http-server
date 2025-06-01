@@ -1,18 +1,19 @@
 TARGET = server
 
-OBJDIR := obj/
+SRC_DIR := src/
+BUILD_DIR := build/
 
-SRC := $(wildcard *.c)
-OBJS := $(SRC:%.c=$(OBJDIR)%.o)
+SRC := $(wildcard $(SRC_DIR)*.c)
+OBJS := $(patsubst $(SRC_DIR)%.c,$(BUILD_DIR)%.o,$(SRC))
 
-# Build target that depends on evey .o
+# Build target that depends on every .o
 $(TARGET): $(OBJS)
 	gcc $^ -o $@
 
-# Create the obj/ directory if it doesn't exist
-$(OBJDIR):
-	mkdir -p $(OBJDIR)
+# Create the build/ directory if it doesn't exist
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
 
 # Compile the source files into object files
-$(OBJDIR)%.o: %.c | $(OBJDIR)
+$(BUILD_DIR)%.o: $(SRC_DIR)%.c | $(BUILD_DIR)
 	gcc -c $< -o $@

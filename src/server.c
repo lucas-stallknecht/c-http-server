@@ -81,7 +81,7 @@ server_error_t run_server(http_server_t* server) {
 }
 
 server_error_t close_server(http_server_t* server) {
-    printf("Closing server (port %d)\n", server->port);
+    printf("\nClosing server (port %d)\n", server->port);
     if (close(server->fd) == -1) {
         LOG_SERVER_ERR("Failed to close server socket");
         return SERVER_ERR_CLOSE;
