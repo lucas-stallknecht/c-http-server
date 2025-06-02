@@ -1,6 +1,8 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#include "types.h"
+#include <stdbool.h>
 #include <stdio.h>
 
 #define LISTEN_BACKLOG 10
@@ -13,16 +15,18 @@ typedef enum {
     SERVER_ERR_ACCEPT,
     SERVER_ERR_CLOSE,
     SERVER_ERR_UNKNOWN
-} server_error_t;
-
+} ServerStatus;
 
 typedef struct {
     int fd;
     int port;
-} http_server_t;
+} HttpServer;
 
-http_server_t* create_server(int port);
-server_error_t run_server(http_server_t* server);
-server_error_t close_server(http_server_t* server);
+HttpServer* create_server(int port);
+ServerStatus run_server(const HttpServer* server);
+ServerStatus close_server(HttpServer* server);
+
+ParseResult parse_request_message(const char* message);
+HttpMethod parse_method(const char* method);
 
 #endif // SERVER_H
