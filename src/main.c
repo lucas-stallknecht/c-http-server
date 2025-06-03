@@ -1,13 +1,17 @@
+#include "router.h"
 #include "server.h"
+#include "animal_controller.h"
+#include "types.h"
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 
-static http_server_t* global_server = NULL;
+static HttpServer* global_server = NULL;
 
 void cleanup_server() {
     if (global_server != NULL) {
         close_server(global_server);
+        destroy_router(&global_server->router);
         free(global_server);
         global_server = NULL;
     }
@@ -35,6 +39,20 @@ int main(int argc, char** argv) {
     global_server = create_server(port);
     if (!global_server)
         return 1;
+
+    Router* router_ptr = &global_server->router;
+
+    HttpRoute miaou_route = {
+        .method = GET,
+        .path = "/miaou",
+        .path_length = strlen("/miaou")};
+    attach_function(router_ptr, &miaou_route, miaou_func);
+
+    HttpRoute ouaf_route = {
+        .method = GET,
+        .path = "/ouaf",
+        .path_length = strlen("/ouaf")};
+    attach_function(router_ptr, &ouaf_route, ouaf_func);
 
     signal(SIGINT, handle_sigint);
     run_server(global_server);

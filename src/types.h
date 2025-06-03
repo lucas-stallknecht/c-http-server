@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #define NUM_HANDLED_METHODS 2
+#define MAX_ROUTES 10
 
 enum http_method {
     UNKNOWN_METHOD = -1,
@@ -19,8 +20,15 @@ enum parse_status {
     PARSE_FAILED_PARAMS = 4
 };
 
+enum route_match_status {
+    MATCH_OK = 0,
+    MATCH_FAILED = 1,
+    // WRONG_METHOD = 1,
+};
+
 typedef enum http_method HttpMethod;
 typedef enum parse_status ParseStatus;
+typedef enum route_match_status RouteMatchStatus;
 
 struct http_route {
     enum http_method method;
@@ -36,5 +44,7 @@ struct parse_result {
 
 typedef struct http_route HttpRoute;
 typedef struct parse_result ParseResult;
+
+typedef void (*ControllerFunc)(char* buffer);
 
 #endif // TYPES_H

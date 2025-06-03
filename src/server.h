@@ -2,6 +2,7 @@
 #define SERVER_H
 
 #include "types.h"
+#include "router.h"
 #include <stdbool.h>
 #include <stdio.h>
 
@@ -20,6 +21,7 @@ typedef enum {
 typedef struct {
     int fd;
     int port;
+    Router router;
 } HttpServer;
 
 HttpServer* create_server(int port);

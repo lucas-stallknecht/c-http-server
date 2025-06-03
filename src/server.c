@@ -1,11 +1,12 @@
 #include "server.h"
-#include "arpa/inet.h"
-#include "netinet/in.h"
-#include "sys/socket.h"
+#include "router.h"
 #include "types.h"
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -36,6 +37,7 @@ HttpServer* create_server(int port) {
     HttpServer* server = malloc(sizeof(HttpServer));
     server->port = port;
     server->fd = serverfd;
+    server->router = create_router(MAX_ROUTES);
 
     return server;
 }
@@ -71,29 +73,40 @@ ServerStatus run_server(const HttpServer* server) {
         }
 
         // -- Request parsing
-        ParseResult result = parse_request_message(read_buff);
-
-       // -- Building dummy response with parse infos
         char response[1024];
+        int response_length = 0;
+        ParseResult parse_result = parse_request_message(read_buff);
 
-        const char* response_header = "HTTP/1.1 200 OK\r\n"
-                                      "Content-Type: text/html; charset=UTF-8\r\n\r\n";
+        // TODO: Handle parsing failed
+        HttpRoute requested_route = {
+            .method = parse_result.requested_route.method,
+            .path = parse_result.requested_route.path,
+            .path_length = parse_result.requested_route.path_length};
 
-        char response_body[100];
-        sprintf(response_body, "Parse status: %d ,Method: %d, Path: %s \r\n",
-                result.status,
-                result.requested_route.method,
-                result.requested_route.path);
+        ControllerFunc controller_func = NULL;
+        RouteMatchStatus match = get_function(&server->router, &requested_route, (void**)&controller_func);
 
-        int response_length = snprintf(response,
+        if (match == MATCH_OK && controller_func != NULL) {
+            const char* response_header = "HTTP/1.1 200 OK\r\n"
+                                          "Content-Type: text/html; charset=UTF-8\r\n\r\n";
+
+            char response_body[64];
+            controller_func(response_body);
+
+            response_length = snprintf(response,
                                        sizeof(response),
                                        "%s%s",
                                        response_header, response_body);
+        } else {
+            const char dummy_error_response[] = "HTTP/1.1 404 Not Found\r\n";
+            strcpy(response, dummy_error_response);
+            response_length = sizeof(dummy_error_response);
+        }
 
         send(clientfd, &response, response_length, 0);
 
         // -- Cleanup parse result
-        free(result.requested_route.path);
+        free(parse_result.requested_route.path);
 
         if (close(clientfd) == -1) {
             printf("Could not close connection from %s\n",
