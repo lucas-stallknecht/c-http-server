@@ -10,10 +10,67 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#define NUM_HANDLED_METHODS 2
+#define MAX_ROUTES 1024 
+
 static const char* const methods[NUM_HANDLED_METHODS] = {
     [GET] = "GET",
     [POST] = "POST",
 };
+
+HttpMethod _parse_method(const char* method) {
+    for (int i = 0; i < NUM_HANDLED_METHODS; i++) {
+        if (strcmp(method, methods[i]) == 0) {
+            return i;
+        }
+    }
+    return UNKNOWN_METHOD;
+}
+
+ParseResult _parse_request_message(const char* message) {
+    ParseResult res;
+    res.requested_route.method = UNKNOWN_METHOD;
+
+    // Only checks start lines for now
+    char* start_line = strsep((char**)&message, "\n");
+
+    // Matches line layout
+    char method[16], path[256], http_version[16];
+    int matched = sscanf(start_line, "%15s %255s %15s", method, path, http_version);
+    if (matched != 3) {
+        res.status = PARSE_FAILED_FORMAT;
+        return res;
+    }
+
+    // Validate HTTP version starts with "HTTP/"
+    if (strncmp(http_version, "HTTP/", 5) != 0) {
+        res.status = PARSE_FAILED_FORMAT;
+        return res;
+    }
+
+    HttpMethod method_value = _parse_method(method);
+    if (method_value == -1) {
+        res.status = PARSE_FAILED_METHOD;
+        return res;
+    }
+
+    // All routes should start with /
+    if (path[0] != '/') {
+        res.status = PARSE_FAILED_PATH;
+        return res;
+    }
+
+    size_t path_length = strlen(path);
+
+    res.status = PARSE_OK;
+    res.requested_route = (HttpRoute){
+        .path = malloc(path_length * sizeof(char)),
+        .path_length = path_length,
+        .method = method_value};
+    memcpy(res.requested_route.path, path, path_length);
+
+    return res;
+}
 
 HttpServer* create_server(int port) {
     int serverfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -75,7 +132,7 @@ ServerStatus run_server(const HttpServer* server) {
         // -- Request parsing
         char response[1024];
         int response_length = 0;
-        ParseResult parse_result = parse_request_message(read_buff);
+        ParseResult parse_result = _parse_request_message(read_buff);
 
         // TODO: Handle parsing failed
         HttpRoute requested_route = {
@@ -83,8 +140,8 @@ ServerStatus run_server(const HttpServer* server) {
             .path = parse_result.requested_route.path,
             .path_length = parse_result.requested_route.path_length};
 
-        ControllerFunc controller_func = NULL;
-        RouteMatchStatus match = get_function(&server->router, &requested_route, (void**)&controller_func);
+        ControllerFunc controller_func;
+        RouteMatchStatus match = router_get_function(&server->router, &requested_route, &controller_func);
 
         if (match == MATCH_OK && controller_func != NULL) {
             const char* response_header = "HTTP/1.1 200 OK\r\n"
@@ -127,56 +184,3 @@ ServerStatus close_server(HttpServer* server) {
     return SERVER_OK;
 }
 
-HttpMethod parse_method(const char* method) {
-    for (int i = 0; i < NUM_HANDLED_METHODS; i++) {
-        if (strcmp(method, methods[i]) == 0) {
-            return i;
-        }
-    }
-    return UNKNOWN_METHOD;
-}
-
-ParseResult parse_request_message(const char* message) {
-    ParseResult res;
-    res.requested_route.method = UNKNOWN_METHOD;
-
-    // Only checks start lines for now
-    char* start_line = strsep((char**)&message, "\n");
-
-    // Matches line layout
-    char method[16], path[256], http_version[16];
-    int matched = sscanf(start_line, "%15s %255s %15s", method, path, http_version);
-    if (matched != 3) {
-        res.status = PARSE_FAILED_FORMAT;
-        return res;
-    }
-
-    // Validate HTTP version starts with "HTTP/"
-    if (strncmp(http_version, "HTTP/", 5) != 0) {
-        res.status = PARSE_FAILED_FORMAT;
-        return res;
-    }
-
-    HttpMethod method_value = parse_method(method);
-    if (method_value == -1) {
-        res.status = PARSE_FAILED_METHOD;
-        return res;
-    }
-
-    // All routes should start with /
-    if (path[0] != '/') {
-        res.status = PARSE_FAILED_PATH;
-        return res;
-    }
-
-    size_t path_length = strlen(path);
-
-    res.status = PARSE_OK;
-    res.requested_route = (HttpRoute){
-        .path = malloc(path_length * sizeof(char)),
-        .path_length = path_length,
-        .method = method_value};
-    memcpy(res.requested_route.path, path, path_length);
-
-    return res;
-}

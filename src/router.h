@@ -8,19 +8,18 @@
 
 // Props to https://xnacly.me/posts/2024/c-hash-map/ for the hashmap implementation.
 // The router determines which controller function should handle the request.
-// We won't be able to detach functions from the Map though (not a limiting factor).
 typedef struct router {
     size_t size;
     size_t capacity;
-    void** functions;
+    ControllerFunc* functions;
 } Router;
+// TODO improve this data structure
+
+size_t _hash(const Router* router, char* str);
 
 Router create_router(size_t max_routes);
 void destroy_router(Router* router);
-
-size_t hash(const Router* router, char* str);
-
-void attach_function(Router* router, HttpRoute* route, void* function);
-RouteMatchStatus get_function(const Router* router, HttpRoute* route, void** function);
+void router_attach_function(Router* router, HttpRoute* route, ControllerFunc function);
+RouteMatchStatus router_get_function(const Router* router, HttpRoute* route, ControllerFunc* function);
 
 #endif // ROUTER_H

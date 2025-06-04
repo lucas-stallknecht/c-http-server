@@ -24,11 +24,12 @@ typedef struct {
     Router router;
 } HttpServer;
 
+ParseResult _parse_request_message(const char* message);
+HttpMethod _parse_method(const char* method);
+
 HttpServer* create_server(int port);
 ServerStatus run_server(const HttpServer* server);
 ServerStatus close_server(HttpServer* server);
 
-ParseResult parse_request_message(const char* message);
-HttpMethod parse_method(const char* method);
 
 #endif // SERVER_H

@@ -7,10 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-const size_t HASH_BASE = 0x811c9dc5;
-const size_t HASH_PRIME = 0x01000193;
+static const size_t HASH_BASE = 0x811c9dc5;
+static const size_t HASH_PRIME = 0x01000193;
 
-size_t hash(const Router* router, char* str) {
+size_t _hash(const Router* router, char* str) {
     size_t initial = HASH_BASE;
 
     while (*str) {
@@ -43,7 +43,7 @@ void destroy_router(Router* router) {
     router->capacity = 0;
 }
 
-void attach_function(Router* router, HttpRoute* route, void* function) {
+void router_attach_function(Router* router, HttpRoute* route, ControllerFunc function) {
     assert(route->path_length > 0);
     assert(route->method != -1);
     assert(route->path != NULL);
@@ -54,15 +54,19 @@ void attach_function(Router* router, HttpRoute* route, void* function) {
     char key[route->path_length];
     GET_KEY_FROM_ROUTE(route, key, route->path_length);
 
-    router->functions[hash(router, key)] = function;
+    router->functions[_hash(router, key)] = function;
     router->size++;
 }
 
-RouteMatchStatus get_function(const Router* router, HttpRoute* route, void** function) {
+RouteMatchStatus router_get_function(const Router* router, HttpRoute* route, ControllerFunc* function) {
     char key[route->path_length];
     GET_KEY_FROM_ROUTE(route, key, route->path_length);
 
-    *function = router->functions[hash(router, key)];
+
+    int hashed_key = _hash(router, key);
+    printf("route: %s, hashed_key: %d \n", route->path, hashed_key);
+
+    *function = router->functions[hashed_key];
 
     if (function == NULL)
         return MATCH_FAILED;

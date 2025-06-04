@@ -3,8 +3,6 @@
 
 #include <stddef.h>
 
-#define NUM_HANDLED_METHODS 2
-#define MAX_ROUTES 10
 
 enum http_method {
     UNKNOWN_METHOD = -1,

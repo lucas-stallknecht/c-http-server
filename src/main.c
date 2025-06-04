@@ -46,13 +46,13 @@ int main(int argc, char** argv) {
         .method = GET,
         .path = "/miaou",
         .path_length = strlen("/miaou")};
-    attach_function(router_ptr, &miaou_route, miaou_func);
+    router_attach_function(router_ptr, &miaou_route, miaou_func);
 
     HttpRoute ouaf_route = {
         .method = GET,
         .path = "/ouaf",
         .path_length = strlen("/ouaf")};
-    attach_function(router_ptr, &ouaf_route, ouaf_func);
+    router_attach_function(router_ptr, &ouaf_route, ouaf_func);
 
     signal(SIGINT, handle_sigint);
     run_server(global_server);
