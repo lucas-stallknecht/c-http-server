@@ -11,7 +11,7 @@
 #include <unistd.h>
 
 #define NUM_HANDLED_METHODS 2
-#define MAX_ROUTES 1024 
+#define MAX_ROUTES 64 // Power of two
 
 static const char* const methods[NUM_HANDLED_METHODS] = {
     [GET] = "GET",
@@ -64,10 +64,17 @@ ParseResult _parse_request_message(const char* message) {
 
     res.status = PARSE_OK;
     res.requested_route = (HttpRoute){
-        .path = malloc(path_length * sizeof(char)),
+        .path = malloc(path_length * sizeof(char) + 1),
         .path_length = path_length,
         .method = method_value};
+
+    if (res.requested_route.path == NULL) {
+        res.status = PARSE_FAILED_SERVER;
+        return res;
+    }
+
     memcpy(res.requested_route.path, path, path_length);
+    res.requested_route.path[path_length] = '\0';
 
     return res;
 }
@@ -126,15 +133,17 @@ ServerStatus run_server(const HttpServer* server) {
         if (receive_status == -1) {
             printf("Could not read from %s\n",
                    inet_ntoa(client_addr.sin_addr));
+            close(clientfd);
             continue;
         }
 
         // -- Request parsing
         char response[1024];
-        int response_length = 0;
+        size_t response_length = 0;
         ParseResult parse_result = _parse_request_message(read_buff);
 
         // TODO: Handle parsing failed
+        // => AND response builder
         HttpRoute requested_route = {
             .method = parse_result.requested_route.method,
             .path = parse_result.requested_route.path,
@@ -160,7 +169,10 @@ ServerStatus run_server(const HttpServer* server) {
             response_length = sizeof(dummy_error_response);
         }
 
-        send(clientfd, &response, response_length, 0);
+        int sent = send(clientfd, response, response_length, 0);
+        if (sent == -1) {
+            printf("Could not send response to %s\n", inet_ntoa(client_addr.sin_addr));
+        }
 
         // -- Cleanup parse result
         free(parse_result.requested_route.path);
@@ -183,4 +195,3 @@ ServerStatus close_server(HttpServer* server) {
 
     return SERVER_OK;
 }
-

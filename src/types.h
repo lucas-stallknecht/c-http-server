@@ -3,7 +3,6 @@
 
 #include <stddef.h>
 
-
 enum http_method {
     UNKNOWN_METHOD = -1,
     GET = 0,
@@ -15,7 +14,8 @@ enum parse_status {
     PARSE_FAILED_FORMAT = 1,
     PARSE_FAILED_METHOD = 2,
     PARSE_FAILED_PATH = 3,
-    PARSE_FAILED_PARAMS = 4
+    PARSE_FAILED_PARAMS = 4,
+    PARSE_FAILED_SERVER = 5,
 };
 
 enum route_match_status {
