@@ -21,7 +21,6 @@ enum parse_status {
 enum route_match_status {
     MATCH_OK = 0,
     MATCH_FAILED = 1,
-    // WRONG_METHOD = 1,
 };
 
 typedef enum http_method HttpMethod;
@@ -43,6 +42,6 @@ struct parse_result {
 typedef struct http_route HttpRoute;
 typedef struct parse_result ParseResult;
 
-typedef void (*ControllerFunc)(char* buffer);
+typedef void (*ControllerFunc)(char** buffer, size_t* size);
 
 #endif // TYPES_H

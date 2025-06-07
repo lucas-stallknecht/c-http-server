@@ -138,7 +138,7 @@ ServerStatus run_server(const HttpServer* server) {
         }
 
         // -- Request parsing
-        char response[1024];
+        char* response = NULL;
         size_t response_length = 0;
         ParseResult parse_result = _parse_request_message(read_buff);
 
@@ -156,17 +156,30 @@ ServerStatus run_server(const HttpServer* server) {
             const char* response_header = "HTTP/1.1 200 OK\r\n"
                                           "Content-Type: text/html; charset=UTF-8\r\n\r\n";
 
-            char response_body[64];
-            controller_func(response_body);
+            char* response_body = NULL;
+            size_t response_body_size = 0;
+            controller_func(&response_body, &response_body_size);
 
-            response_length = snprintf(response,
-                                       sizeof(response),
-                                       "%s%s",
-                                       response_header, response_body);
+            // Allocate response buffer
+            size_t header_len = strlen(response_header);
+            response_length = header_len + response_body_size;
+
+            response = malloc(response_length);
+            if (!response) {
+                perror("malloc failed");
+            }
+
+            memcpy(response, response_header, header_len);
+            memcpy(response + header_len, response_body, response_body_size);
+
+            free(response_body);
         } else {
             const char dummy_error_response[] = "HTTP/1.1 404 Not Found\r\n";
-            strcpy(response, dummy_error_response);
-            response_length = sizeof(dummy_error_response);
+
+            response_length = strlen(dummy_error_response);
+            response = malloc(response_length + 1);
+            memcpy(response, dummy_error_response, response_length);
+            response[response_length] = '\0';
         }
 
         int sent = send(clientfd, response, response_length, 0);
@@ -174,6 +187,7 @@ ServerStatus run_server(const HttpServer* server) {
             printf("Could not send response to %s\n", inet_ntoa(client_addr.sin_addr));
         }
 
+        free(response);
         // -- Cleanup parse result
         free(parse_result.requested_route.path);
 

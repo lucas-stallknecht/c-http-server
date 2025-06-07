@@ -28,7 +28,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Parse port as int from argv
     const char* first_param = argv[1];
     int port = atoi(first_param);
     if (port == 0) {
@@ -42,17 +41,23 @@ int main(int argc, char** argv) {
 
     Router* router_ptr = &global_server->router;
 
-    HttpRoute miaou_route = {
+    HttpRoute index_route = {
         .method = GET,
-        .path = "/miaou",
-        .path_length = strlen("/miaou")};
-    router_attach_function(router_ptr, &miaou_route, miaou_func);
+        .path = "/",
+        .path_length = strlen("/")};
+    router_attach_function(router_ptr, &index_route, index_func);
 
-    HttpRoute ouaf_route = {
+    HttpRoute cat_route = {
         .method = GET,
-        .path = "/ouaf",
-        .path_length = strlen("/ouaf")};
-    router_attach_function(router_ptr, &ouaf_route, ouaf_func);
+        .path = "/cat",
+        .path_length = strlen("/cat")};
+    router_attach_function(router_ptr, &cat_route, cat_func);
+
+    HttpRoute dog_route = {
+        .method = GET,
+        .path = "/dog",
+        .path_length = strlen("/dog")};
+    router_attach_function(router_ptr, &dog_route, dog_func);
 
     signal(SIGINT, handle_sigint);
     run_server(global_server);
