@@ -1,4 +1,5 @@
 #include "server.h"
+#include "animal_controller.h"
 #include "router.h"
 #include "types.h"
 #include <arpa/inet.h>
@@ -79,6 +80,57 @@ ParseResult _parse_request_message(const char* message) {
     return res;
 }
 
+size_t _build_response(int status_code, const char* body, char** response) {
+    const char* status_text;
+    switch (status_code) {
+    case 200:
+        status_text = "200 OK";
+        break;
+    case 400:
+        status_text = "400 Bad Request";
+        break;
+    case 404:
+        status_text = "404 Not Found";
+        break;
+    default:
+        status_text = "500 Internal Server Error";
+        break;
+    }
+
+    char header_format[] = "HTTP/1.1 %s\r\n"
+                           "Content-Type: text/%s\r\n"
+                           "Content-Length: %zu\r\n"
+                           "\r\n";
+
+    char* content_type = status_code == 400 ? "plain" : "html";
+    size_t body_len = body ? strlen(body) : 0;
+
+    // Estimate header size
+    char header[512];
+    int header_len = snprintf(header, sizeof(header), header_format, status_text, content_type, body_len);
+
+    if (header_len < 0) {
+        printf("Header formatting error\n");
+        *response = NULL;
+        return 0;
+    }
+
+    size_t response_len = header_len + body_len;
+
+    *response = malloc(response_len);
+    if (!*response) {
+        perror("malloc failed");
+        return 0;
+    }
+
+    memcpy(*response, header, header_len);
+    if (body_len > 0) {
+        memcpy(*response + header_len, body, body_len);
+    }
+
+    return response_len;
+}
+
 HttpServer* create_server(int port) {
     int serverfd = socket(AF_INET, SOCK_STREAM, 0);
     if (serverfd == -1) {
@@ -117,7 +169,7 @@ ServerStatus run_server(const HttpServer* server) {
     struct sockaddr_in client_addr;
     socklen_t client_addn_size = sizeof(client_addr);
     while (1) {
-        // Now, we can accept connections one at the time
+        // -- Accept client connections
         int clientfd = accept(server->fd,
                               (struct sockaddr*)&client_addr,
                               &client_addn_size);
@@ -137,58 +189,50 @@ ServerStatus run_server(const HttpServer* server) {
             continue;
         }
 
-        // -- Request parsing
         char* response = NULL;
         size_t response_length = 0;
+
+        // -- Request parsing
         ParseResult parse_result = _parse_request_message(read_buff);
 
-        // TODO: Handle parsing failed
-        // => AND response builder
-        HttpRoute requested_route = {
-            .method = parse_result.requested_route.method,
-            .path = parse_result.requested_route.path,
-            .path_length = parse_result.requested_route.path_length};
+        // -- Build the response
+        if (parse_result.status != PARSE_OK) {
+            response_length = _build_response(400, NULL, &response);
+        } else {
+            HttpRoute requested_route = {
+                .method = parse_result.requested_route.method,
+                .path = parse_result.requested_route.path,
+                .path_length = parse_result.requested_route.path_length};
 
-        ControllerFunc controller_func;
-        RouteMatchStatus match = router_get_function(&server->router, &requested_route, &controller_func);
-
-        if (match == MATCH_OK && controller_func != NULL) {
-            const char* response_header = "HTTP/1.1 200 OK\r\n"
-                                          "Content-Type: text/html; charset=UTF-8\r\n\r\n";
+            ControllerFunc controller_func;
+            RouteMatchStatus match = router_get_function(&server->router, &requested_route, &controller_func);
 
             char* response_body = NULL;
             size_t response_body_size = 0;
-            controller_func(&response_body, &response_body_size);
+            if (match == MATCH_OK && controller_func != NULL) {
+                controller_func(&response_body, &response_body_size);
 
-            // Allocate response buffer
-            size_t header_len = strlen(response_header);
-            response_length = header_len + response_body_size;
+                if (response_body != NULL)
+                    response_length = _build_response(200, response_body, &response);
 
-            response = malloc(response_length);
-            if (!response) {
-                perror("malloc failed");
+            } else {
+                not_found_func(&response_body, &response_body_size);
+
+                if (response_body != NULL)
+                    response_length = _build_response(404, response_body, &response);
             }
 
-            memcpy(response, response_header, header_len);
-            memcpy(response + header_len, response_body, response_body_size);
-
             free(response_body);
-        } else {
-            const char dummy_error_response[] = "HTTP/1.1 404 Not Found\r\n";
-
-            response_length = strlen(dummy_error_response);
-            response = malloc(response_length + 1);
-            memcpy(response, dummy_error_response, response_length);
-            response[response_length] = '\0';
         }
 
+        // -- Send response
         int sent = send(clientfd, response, response_length, 0);
         if (sent == -1) {
             printf("Could not send response to %s\n", inet_ntoa(client_addr.sin_addr));
         }
 
+        // -- Cleanup resources
         free(response);
-        // -- Cleanup parse result
         free(parse_result.requested_route.path);
 
         if (close(clientfd) == -1) {

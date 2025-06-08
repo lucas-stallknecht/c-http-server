@@ -44,6 +44,11 @@ void index_func(char** buffer, size_t* size) {
 void dog_func(char** buffer, size_t* size) {
     _read_html_into_buffer("pages/dog.html", buffer, size);
 }
+
 void cat_func(char** buffer, size_t* size) {
     _read_html_into_buffer("pages/cat.html", buffer, size);
+}
+
+void not_found_func(char** buffer, size_t* size) {
+    _read_html_into_buffer("pages/not_found.html", buffer, size);
 }
