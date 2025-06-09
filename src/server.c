@@ -13,7 +13,7 @@
 
 #define NUM_HANDLED_METHODS 2
 #define MAX_ROUTES 8
-#define LISTEN_BACKLOG 10
+#define LISTEN_BACKLOG 1000
 
 #define LOG_SERVER_ERR(msg) perror(msg);
 
