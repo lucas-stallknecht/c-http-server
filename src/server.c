@@ -12,7 +12,10 @@
 #include <unistd.h>
 
 #define NUM_HANDLED_METHODS 2
-#define MAX_ROUTES 64 // Power of two
+#define MAX_ROUTES 8
+#define LISTEN_BACKLOG 10
+
+#define LOG_SERVER_ERR(msg) perror(msg);
 
 static const char* const methods[NUM_HANDLED_METHODS] = {
     [GET] = "GET",
@@ -29,21 +32,16 @@ HttpMethod _parse_method(const char* method) {
 }
 
 ParseResult _parse_request_message(const char* message) {
-    ParseResult res;
-    res.requested_route.method = UNKNOWN_METHOD;
+    ParseResult res = {.requested_route.method = UNKNOWN_METHOD};
 
-    // Only checks start lines for now
     char* start_line = strsep((char**)&message, "\n");
-
-    // Matches line layout
     char method[16], path[256], http_version[16];
-    int matched = sscanf(start_line, "%15s %255s %15s", method, path, http_version);
-    if (matched != 3) {
+
+    if (sscanf(start_line, "%15s %255s %15s", method, path, http_version) != 3) {
         res.status = PARSE_FAILED_FORMAT;
         return res;
     }
 
-    // Validate HTTP version starts with "HTTP/"
     if (strncmp(http_version, "HTTP/", 5) != 0) {
         res.status = PARSE_FAILED_FORMAT;
         return res;
@@ -55,7 +53,7 @@ ParseResult _parse_request_message(const char* message) {
         return res;
     }
 
-    // All routes should start with /
+    // All routes must start with /
     if (path[0] != '/') {
         res.status = PARSE_FAILED_PATH;
         return res;
@@ -63,19 +61,18 @@ ParseResult _parse_request_message(const char* message) {
 
     size_t path_length = strlen(path);
 
-    res.status = PARSE_OK;
-    res.requested_route = (HttpRoute){
-        .path = malloc(path_length * sizeof(char) + 1),
-        .path_length = path_length,
-        .method = method_value};
-
-    if (res.requested_route.path == NULL) {
+    // run_server is reponsible of freeing this
+    res.requested_route.path = malloc(path_length + 1);
+    if (!res.requested_route.path) {
         res.status = PARSE_FAILED_SERVER;
         return res;
     }
 
     memcpy(res.requested_route.path, path, path_length);
     res.requested_route.path[path_length] = '\0';
+    res.requested_route.path_length = path_length;
+    res.requested_route.method = method_value;
+    res.status = PARSE_OK;
 
     return res;
 }
@@ -97,48 +94,44 @@ size_t _build_response(int status_code, const char* body, char** response) {
         break;
     }
 
-    char header_format[] = "HTTP/1.1 %s\r\n"
-                           "Content-Type: text/%s\r\n"
-                           "Content-Length: %zu\r\n"
-                           "\r\n";
+    // Only return html for well formatted requests
+    const char* content_type = (status_code == 400 || status_code == 500) ? "plain" : "html";
+    size_t body_length = body ? strlen(body) : 0;
 
-    char* content_type = status_code == 400 ? "plain" : "html";
-    size_t body_len = body ? strlen(body) : 0;
-
-    // Estimate header size
     char header[512];
-    int header_len = snprintf(header, sizeof(header), header_format, status_text, content_type, body_len);
+    int header_length = snprintf(header, sizeof(header),
+                                 "HTTP/1.1 %s\r\n"
+                                 "Content-Type: text/%s\r\n"
+                                 "Content-Length: %zu\r\n\r\n",
+                                 status_text, content_type, body_length);
 
-    if (header_len < 0) {
-        printf("Header formatting error\n");
+    if (header_length < 0) {
         *response = NULL;
         return 0;
     }
 
-    size_t response_len = header_len + body_len;
-
-    *response = malloc(response_len);
+    size_t response_length = header_length + body_length;
+    // run_server is responsible of freeing it
+    *response = malloc(response_length);
     if (!*response) {
-        perror("malloc failed");
         return 0;
     }
 
-    memcpy(*response, header, header_len);
-    if (body_len > 0) {
-        memcpy(*response + header_len, body, body_len);
+    memcpy(*response, header, header_length);
+    if (body_length > 0) {
+        memcpy(*response + header_length, body, body_length);
     }
 
-    return response_len;
+    return response_length;
 }
 
 HttpServer* create_server(int port) {
     int serverfd = socket(AF_INET, SOCK_STREAM, 0);
     if (serverfd == -1) {
-        LOG_SERVER_ERR("Failed to create socket");
+        LOG_SERVER_ERR("Failed to create socket\n");
         return NULL;
     }
 
-    // Bind an address to the socket (aka assigning a name to the socket)
     struct sockaddr_in server_addr = {
         .sin_family = AF_INET,
         .sin_addr = {.s_addr = INADDR_ANY},
@@ -146,106 +139,92 @@ HttpServer* create_server(int port) {
     };
 
     if (bind(serverfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
-        LOG_SERVER_ERR("Failed to bind socket");
+        LOG_SERVER_ERR("Failed to bind socket\n");
+        close(serverfd);
         return NULL;
     }
 
+    // the caller is responsible of freeing it
     HttpServer* server = malloc(sizeof(HttpServer));
+    if (!server) {
+        close(serverfd);
+        return NULL;
+    }
+
     server->port = port;
     server->fd = serverfd;
     server->router = create_router(MAX_ROUTES);
-
     return server;
 }
 
 ServerStatus run_server(const HttpServer* server) {
     if (listen(server->fd, LISTEN_BACKLOG) == -1) {
-        LOG_SERVER_ERR("Failed to listen");
+        LOG_SERVER_ERR("Failed to listen\n");
         return SERVER_ERR_LISTEN;
     }
 
-    printf("Listening on port %d...\n", server->port);
+    fprintf(stderr, "Listening on port %d...\n", server->port);
 
     struct sockaddr_in client_addr;
-    socklen_t client_addn_size = sizeof(client_addr);
+    socklen_t client_addr_size = sizeof(client_addr);
+
     while (1) {
-        // -- Accept client connections
-        int clientfd = accept(server->fd,
-                              (struct sockaddr*)&client_addr,
-                              &client_addn_size);
+        // Accept client connections
+        int clientfd = accept(server->fd, (struct sockaddr*)&client_addr, &client_addr_size);
         if (clientfd == -1) {
-            printf("Could not accept connection from %s:%d\n",
-                   inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+            fprintf(stderr, "Could not accept connection from %s:%d\n",
+                    inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
             break;
         }
 
         char read_buff[4096];
-        int receive_status = recv(clientfd, &read_buff, sizeof(read_buff), 0);
-
-        if (receive_status == -1) {
-            printf("Could not read from %s\n",
-                   inet_ntoa(client_addr.sin_addr));
+        int recv_status = recv(clientfd, read_buff, sizeof(read_buff), 0);
+        if (recv_status == -1) {
+            fprintf(stderr, "Could not read from %s\n", inet_ntoa(client_addr.sin_addr));
             close(clientfd);
             continue;
         }
 
+        // Parse the request, match the route and build the response
         char* response = NULL;
         size_t response_length = 0;
-
-        // -- Request parsing
         ParseResult parse_result = _parse_request_message(read_buff);
 
-        // -- Build the response
         if (parse_result.status != PARSE_OK) {
             response_length = _build_response(400, NULL, &response);
         } else {
-            HttpRoute requested_route = {
-                .method = parse_result.requested_route.method,
-                .path = parse_result.requested_route.path,
-                .path_length = parse_result.requested_route.path_length};
-
+            HttpRoute* route = &parse_result.requested_route;
             ControllerFunc controller_func;
-            RouteMatchStatus match = router_get_function(&server->router, &requested_route, &controller_func);
+            RouteMatchStatus match = router_get_function(&server->router, route, &controller_func);
 
             char* response_body = NULL;
-            size_t response_body_size = 0;
-            if (match == MATCH_OK && controller_func != NULL) {
-                controller_func(&response_body, &response_body_size);
+            size_t response_body_length = 0;
 
-                if (response_body != NULL)
-                    response_length = _build_response(200, response_body, &response);
-
+            if (match == MATCH_OK && controller_func) {
+                controller_func(&response_body, &response_body_length);
+                response_length = _build_response(200, response_body, &response);
             } else {
-                not_found_func(&response_body, &response_body_size);
-
-                if (response_body != NULL)
-                    response_length = _build_response(404, response_body, &response);
+                not_found_func(&response_body, &response_body_length);
+                response_length = _build_response(404, response_body, &response);
             }
 
             free(response_body);
         }
 
-        // -- Send response
-        int sent = send(clientfd, response, response_length, 0);
-        if (sent == -1) {
-            printf("Could not send response to %s\n", inet_ntoa(client_addr.sin_addr));
+        if (send(clientfd, response, response_length, 0) == -1) {
+            fprintf(stderr, "Could not send response to %s\n", inet_ntoa(client_addr.sin_addr));
         }
 
-        // -- Cleanup resources
         free(response);
         free(parse_result.requested_route.path);
-
-        if (close(clientfd) == -1) {
-            printf("Could not close connection from %s\n",
-                   inet_ntoa(client_addr.sin_addr));
-            continue;
-        }
+        close(clientfd);
     }
+
     return SERVER_OK;
 }
 
 ServerStatus close_server(HttpServer* server) {
-    printf("\nClosing server (port %d)\n", server->port);
+    fprintf(stderr, "\nClosing server (port %d)\n", server->port);
     if (close(server->fd) == -1) {
         LOG_SERVER_ERR("Failed to close server socket");
         return SERVER_ERR_CLOSE;

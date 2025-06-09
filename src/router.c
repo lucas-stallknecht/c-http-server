@@ -14,39 +14,55 @@ static const size_t HASH_BASE = 0x811c9dc5;
 static const size_t HASH_PRIME = 0x01000193;
 
 size_t _hash(const Router* router, const char* str) {
-    size_t initial = HASH_BASE;
+    size_t hash = HASH_BASE;
 
     while (*str) {
-        initial ^= *str++;
-        initial *= HASH_PRIME;
+        hash ^= (unsigned char)(*str++);
+        hash *= HASH_PRIME;
     }
-    // in [0, capacity - 1]
-    return initial & (router->capacity - 1);
+
+    // Ensures index falls within [0, capacity - 1]
+    return hash & (router->capacity - 1);
 }
 
 Router create_router(size_t max_routes) {
     Router router = {
         .size = 0,
         .capacity = max_routes,
-    };
+        .entries = NULL};
+
     router.entries = malloc(sizeof(ControllerEntry*) * router.capacity);
-    if (router.entries) {
-        memset(router.entries, 0, sizeof(ControllerEntry*) * router.capacity);
-        for (int i = 0; i < router.capacity; i++) {
-            router.entries[i] = malloc(sizeof(ControllerEntry));
-            if (router.entries[i]) {
-                router.entries[i]->function = NULL;
-                router.entries[i]->key_value = NULL;
-            };
+    if (!router.entries) {
+        return router;
+    }
+
+    memset(router.entries, 0, sizeof(ControllerEntry*) * router.capacity);
+
+    for (size_t i = 0; i < router.capacity; i++) {
+        router.entries[i] = malloc(sizeof(ControllerEntry));
+        if (!router.entries[i]) {
+            // Free any already allocated entries to prevent leaks
+            for (size_t j = 0; j < i; j++) {
+                free(router.entries[j]);
+            }
+            free(router.entries);
+            router.entries = NULL;
+            router.capacity = 0;
+            router.size = 0;
+            return router;
         }
+
+        router.entries[i]->function = NULL;
+        router.entries[i]->key_value = NULL;
     }
 
     return router;
 }
 
 void destroy_router(Router* router) {
-    if (!router || !router->entries)
+    if (!router || !router->entries) {
         return;
+    }
 
     for (size_t i = 0; i < router->capacity; ++i) {
         if (router->entries[i]) {
@@ -57,8 +73,8 @@ void destroy_router(Router* router) {
 
     free(router->entries);
     router->entries = NULL;
-    router->size = 0;
     router->capacity = 0;
+    router->size = 0;
 }
 
 void router_attach_function(Router* router, const HttpRoute* route, const ControllerFunc function) {
@@ -84,7 +100,7 @@ void router_attach_function(Router* router, const HttpRoute* route, const Contro
         }
     }
     router->entries[i]->function = function;
-    // Will actually create memory on the Heap and copy the key
+    // Fyi, strdup will actually ask for memory on the Heap and copy the key
     router->entries[i]->key_value = strdup(key);
     router->size++;
 }
@@ -106,6 +122,7 @@ RouteMatchStatus router_get_function(const Router* router, const HttpRoute* rout
         if (i == hash_code)
             break; // Full cycle, no match
     }
+
 
     *function = NULL;
     return MATCH_FAILED;

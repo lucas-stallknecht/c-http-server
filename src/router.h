@@ -3,7 +3,7 @@
 
 #include "types.h"
 
-// The router determines which controller function should handle the request.
+// The router determines which controller function should handle the request
 
 typedef struct controller_entry {
     ControllerFunc function;

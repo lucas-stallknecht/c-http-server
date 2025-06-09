@@ -1,6 +1,6 @@
+#include "animal_controller.h"
 #include "router.h"
 #include "server.h"
-#include "animal_controller.h"
 #include "types.h"
 #include <signal.h>
 #include <stdlib.h>
@@ -24,19 +24,19 @@ void handle_sigint(int sig) {
 
 int main(int argc, char** argv) {
     if (argc != 2) {
-        printf("You must only specify a port for the server");
+        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
         return 1;
     }
 
     const char* first_param = argv[1];
     int port = atoi(first_param);
     if (port == 0) {
-        printf("Failed to read port number");
+        fprintf(stderr, "Failed to read port number\n");
         return 1;
     }
 
     global_server = create_server(port);
-    if (!global_server)
+    if (global_server == NULL)
         return 1;
 
     Router* router_ptr = &global_server->router;

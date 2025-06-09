@@ -9,6 +9,14 @@ enum http_method {
     POST = 1
 };
 
+enum server_status {
+    SERVER_OK = 0,
+    SERVER_ERR_LISTEN,
+    SERVER_ERR_ACCEPT,
+    SERVER_ERR_CLOSE,
+    SERVER_ERR_UNKNOWN
+};
+
 enum parse_status {
     PARSE_OK = 0,
     PARSE_FAILED_FORMAT = 1,
@@ -26,6 +34,7 @@ enum route_match_status {
 typedef enum http_method HttpMethod;
 typedef enum parse_status ParseStatus;
 typedef enum route_match_status RouteMatchStatus;
+typedef enum server_status ServerStatus;
 
 struct http_route {
     enum http_method method;
